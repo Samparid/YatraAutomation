@@ -18,34 +18,69 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
         
-    - name: Install Chrome and ChromeDriver
+    - name: Install Chrome
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget unzip
-        # Install Chrome
+        sudo apt-get install -y wget
         wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
         echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
         sudo apt-get update
         sudo apt-get install -y google-chrome-stable
         
-        # Install ChromeDriver
-        CHROME_VERSION=$(google-chrome --version | cut -d ' ' -f3)
-        CHROME_DRIVER_VERSION=${CHROME_VERSION%.*.*}
-        wget -q "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/$CHROME_VERSION/linux64/chromedriver-linux64.zip"
-        unzip chromedriver-linux64.zip
-        sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
-        sudo chmod +x /usr/local/bin/chromedriver
-        
-    - name: Download Selenium jars
+    - name: Create proper project structure
       run: |
-        mkdir -p libs
-        wget -q -P libs/ https://repo1.maven.org/maven2/org/seleniumhq/selenium/selenium-java/4.15.0/selenium-java-4.15.0.jar
-        wget -q -P libs/ https://repo1.maven.org/maven2/org/seleniumhq/selenium/selenium-chrome-driver/4.15.0/selenium-chrome-driver-4.15.0.jar
-        wget -q -P libs/ https://repo1.maven.org/maven2/org/seleniumhq/selenium/selenium-api/4.15.0/selenium-api-4.15.0.jar
-        wget -q -P libs/ https://repo1.maven.org/maven2/org/seleniumhq/selenium/selenium-support/4.15.0/selenium-support-4.15.0.jar
-        # Download other required dependencies...
+        mkdir -p src/main/java/com/yatra/automation
+        # Move your Java file to the correct location
+        find . -name "YatraAutomationScript.java" -exec cp {} src/main/java/com/yatra/automation/ \;
         
-    - name: Compile and run
+    - name: Create complete pom.xml
       run: |
-        javac -cp "libs/*" -d . src/main/java/com/yatra/automation/YatraAutomationScript.java
-        java -cp ".:libs/*" com.yatra.automation.YatraAutomationScript
+        cat > pom.xml << 'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <project xmlns="http://maven.apache.org/POM/4.0.0"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+                 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+            <modelVersion>4.0.0</modelVersion>
+            
+            <groupId>com.yatra</groupId>
+            <artifactId>automation-tests</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            
+            <properties>
+                <maven.compiler.source>17</maven.compiler.source>
+                <maven.compiler.target>17</maven.compiler.target>
+                <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+            </properties>
+            
+            <dependencies>
+                <dependency>
+                    <groupId>org.seleniumhq.selenium</groupId>
+                    <artifactId>selenium-java</artifactId>
+                    <version>4.15.0</version>
+                </dependency>
+            </dependencies>
+            
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <version>3.11.0</version>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <configuration>
+                            <mainClass>com.yatra.automation.YatraAutomationScript</mainClass>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </project>
+        EOF
+        
+    - name: Run with Maven
+      run: |
+        mvn compile exec:java -Dexec.mainClass="com.yatra.automation.YatraAutomationScript"
