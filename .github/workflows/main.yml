@@ -1,47 +1,51 @@
 name: Yatra Automation
+
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
+    branches: [ main, master ]
 
 jobs:
-  test:
+  automation-test:
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Chrome
-        uses: browser-actions/setup-chrome@v1
-
-      - name: Install dependencies (Xvfb + Chrome runtime libs)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libxi6 libxss1 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxrandr2 libasound2 libpangocairo-1.0-0 fonts-liberation
-
-      - name: Start Xvfb and set DISPLAY
-        run: |
-          Xvfb :99 -screen 0 1920x1080x24 >/dev/null 2>&1 &
-          echo "DISPLAY=:99" >> $GITHUB_ENV
-
-      - name: Compile Java sources
-        run: |
-          mkdir -p out
-          # compile all Java sources from src/main/java, include libs in classpath if present
-          SRC_FILES=$(find src/main/java -name "*.java" || true)
-          if [ -n "$SRC_FILES" ]; then
-            javac -cp "libs/*:." -d out $SRC_FILES
-          else
-            echo "No Java source files found in src/main/java"
-          fi
-
-      - name: Run automation script
-        run: |
-          # Adjust the main class below if your package/class name differs
-          java -cp "out:libs/*:." com.yatra.automation.YatraAutomationScript
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        
+    - name: Install Chrome and ChromeDriver
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget unzip
+        # Install Chrome
+        wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+        echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+        
+        # Install ChromeDriver
+        CHROME_VERSION=$(google-chrome --version | cut -d ' ' -f3)
+        CHROME_DRIVER_VERSION=${CHROME_VERSION%.*.*}
+        wget -q "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/$CHROME_VERSION/linux64/chromedriver-linux64.zip"
+        unzip chromedriver-linux64.zip
+        sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
+        sudo chmod +x /usr/local/bin/chromedriver
+        
+    - name: Download Selenium jars
+      run: |
+        mkdir -p libs
+        wget -q -P libs/ https://repo1.maven.org/maven2/org/seleniumhq/selenium/selenium-java/4.15.0/selenium-java-4.15.0.jar
+        wget -q -P libs/ https://repo1.maven.org/maven2/org/seleniumhq/selenium/selenium-chrome-driver/4.15.0/selenium-chrome-driver-4.15.0.jar
+        wget -q -P libs/ https://repo1.maven.org/maven2/org/seleniumhq/selenium/selenium-api/4.15.0/selenium-api-4.15.0.jar
+        wget -q -P libs/ https://repo1.maven.org/maven2/org/seleniumhq/selenium/selenium-support/4.15.0/selenium-support-4.15.0.jar
+        # Download other required dependencies...
+        
+    - name: Compile and run
+      run: |
+        javac -cp "libs/*" -d . src/main/java/com/yatra/automation/YatraAutomationScript.java
+        java -cp ".:libs/*" com.yatra.automation.YatraAutomationScript
