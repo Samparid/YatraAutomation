@@ -18,150 +18,22 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
         
-    - name: Install Chrome and ChromeDriver
+    - name: Install Chrome
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget unzip
-        # Install Chrome
+        sudo apt-get install -y wget
         wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
         echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
         sudo apt-get update
         sudo apt-get install -y google-chrome-stable
         
-        # Install ChromeDriver (compatible version)
-        CHROME_VERSION=$(google-chrome --version | awk '{print $3}')
-        echo "Chrome version: $CHROME_VERSION"
-        wget -q "https://storage.googleapis.com/chrome-for-testing-public/$CHROME_VERSION/linux64/chromedriver-linux64.zip"
-        unzip -o chromedriver-linux64.zip
-        sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
-        sudo chmod +x /usr/local/bin/chromedriver
-        chromedriver --version
-        
-    - name: Create project structure and update Java code
+    - name: Create proper project structure
       run: |
         mkdir -p src/main/java/com/yatra/automation
-        # Create the Java file with headless mode
-        cat > src/main/java/com/yatra/automation/YatraAutomationScript.java << 'EOF'
-        package com.yatra.automation;
-
-        import org.openqa.selenium.By;
-        import org.openqa.selenium.TimeoutException;
-        import org.openqa.selenium.WebDriver;
-        import org.openqa.selenium.WebElement;
-        import org.openqa.selenium.chrome.ChromeDriver;
-        import org.openqa.selenium.chrome.ChromeOptions;
-        import org.openqa.selenium.support.ui.ExpectedConditions;
-        import org.openqa.selenium.support.ui.WebDriverWait;
-
-        import java.time.Duration;
-        import java.util.List;
-
-        public class YatraAutomationScript {
-
-            public static void main(String[] args) throws InterruptedException {
-
-                ChromeOptions chromeOptions = new ChromeOptions();
-                chromeOptions.addArguments("--disable-notifications");
-                chromeOptions.addArguments("--headless"); // Add headless
-                chromeOptions.addArguments("--no-sandbox"); // Required for CI
-                chromeOptions.addArguments("--disable-dev-shm-usage"); // Required for CI
-                chromeOptions.addArguments("--disable-gpu"); // Recommended for headless
-                chromeOptions.addArguments("--window-size=1920,1080"); // Set window size
-                chromeOptions.addArguments("--remote-allow-origins=*"); // Allow remote origins
-                
-                WebDriver driver = new ChromeDriver(chromeOptions);
-                WebDriverWait webDriverWait = new WebDriverWait(driver, Duration.ofSeconds(20));
-                
-                try {
-                    driver.get("https://www.yatra.com");
-                    System.out.println("Page title: " + driver.getTitle());
-                    
-                    HandleRegistrationPopUps(webDriverWait);
-                    By departureDateButtonLocator = By.xpath("//div[@aria-label='Departure Date inputbox'and @role='button']");
-                    WebElement departureDateButton = webDriverWait.until(ExpectedConditions.elementToBeClickable(departureDateButtonLocator));
-                    assert departureDateButton != null;
-                    departureDateButton.click();
-                    
-                    Thread.sleep(3000); // Wait for calendar to load
-                    
-                    WebElement NovCalendarWebElement = selectTheMonthFromCalendar(0, webDriverWait);//current month
-                    WebElement DecCalendarWebElement = selectTheMonthFromCalendar(1, webDriverWait);//Next Month
-                    Thread.sleep(2000);//current month
-                    String lowestPriceForCurrentMonth = getMeLowestPrice(NovCalendarWebElement);
-                    String lowestPriceForNextMonth = getMeLowestPrice(DecCalendarWebElement);
-                    double MinimumPrice = compareTwoMonthsPrices(lowestPriceForCurrentMonth, lowestPriceForNextMonth);
-                    System.out.println("lowest Price for both month is " + MinimumPrice);
-                    
-                } catch (Exception e) {
-                    System.out.println("Error occurred: " + e.getMessage());
-                    e.printStackTrace();
-                } finally {
-                    driver.quit();
-                }
-            }
-
-            private static void HandleRegistrationPopUps(WebDriverWait webDriverWait) {
-                By popUpsLocator = By.xpath("//div[contains(@class,\"style_popup\")][1]");
-                try {
-                    WebElement PopElement = webDriverWait.until(ExpectedConditions.visibilityOfElementLocated(popUpsLocator));
-                    assert PopElement != null;
-                    WebElement PopUpButton = PopElement.findElement(By.xpath(".//img[@alt=\"cross\"]"));
-                    PopUpButton.click();
-                    System.out.println("Pop up handled successfully");
-                } catch (TimeoutException e) {
-                    System.out.println("Pop up not shown on the screen!!");
-                }
-            }
-
-            private static String getMeLowestPrice(WebElement monthWebElement) {
-                By NovPriceLocator = By.xpath(".//span[contains(@class,\"custom-day-content\")]");
-                List<WebElement> NovPriceList = monthWebElement.findElements(NovPriceLocator);
-                int lowestPrice = Integer.MAX_VALUE;
-                WebElement priceElement = null;
-                for (var price : NovPriceList) {
-
-                    String PriceString = price.getText();
-                    if (!PriceString.isEmpty()) {
-                        PriceString = PriceString.replace("₹", "").replace(",", "");
-                        int priceInt = Integer.parseInt(PriceString);
-                        if (priceInt < lowestPrice) {
-                            lowestPrice = priceInt;
-                            priceElement = price;
-
-                        }
-                    }
-                }
-                assert priceElement != null;
-                WebElement dateElement = priceElement.findElement(By.xpath(".//../.."));
-                return dateElement.getAttribute("aria-label") + " --- Price is Rs " + lowestPrice;
-            }
-
-            public static WebElement selectTheMonthFromCalendar(int index, WebDriverWait webDriverWait) {
-                By calendarMonthLocator = By.xpath("//div[@class='react-datepicker__month-container']");
-                List<WebElement> CalendarMonthList = webDriverWait.until(ExpectedConditions.visibilityOfAllElementsLocatedBy(calendarMonthLocator));
-                assert CalendarMonthList != null;
-                System.out.println("Found " + CalendarMonthList.size() + " calendar months");
-                return CalendarMonthList.get(index);
-            }
-
-            public static double compareTwoMonthsPrices(String currentMonthPrice, String nextMonthPrice) {
-                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("Rs\\s*(\\d+)");
-                java.util.regex.Matcher matcher1 = pattern.matcher(currentMonthPrice);
-                java.util.regex.Matcher matcher2 = pattern.matcher(nextMonthPrice);
-
-                if (matcher1.find() && matcher2.find()) {
-                    double price1 = Double.parseDouble(matcher1.group(1));
-                    double price2 = Double.parseDouble(matcher2.group(1));
-                    return Math.min(price1, price2);
-                }
-
-                throw new IllegalArgumentException("Could not extract prices from both strings");
-
-            }
-        }
-        EOF
+        # Move your Java file to the correct location
+        find . -name "YatraAutomationScript.java" -exec cp {} src/main/java/com/yatra/automation/ \;
         
-    - name: Create pom.xml
+    - name: Create complete pom.xml
       run: |
         cat > pom.xml << 'EOF'
         <?xml version="1.0" encoding="UTF-8"?>
@@ -195,6 +67,14 @@ jobs:
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-compiler-plugin</artifactId>
                         <version>3.11.0</version>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <configuration>
+                            <mainClass>com.yatra.automation.YatraAutomationScript</mainClass>
+                        </configuration>
                     </plugin>
                 </plugins>
             </build>
